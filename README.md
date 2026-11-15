@@ -104,3 +104,4 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 - [xemu](https://github.com/xemu-project/xemu) and [Cxbx-Reloaded](https://github.com/Cxbx-Reloaded/Cxbx-Reloaded), which XboxXBE-Recomp used as references for Xbox hardware and API behavior.
 
 *Black* is a trademark of its respective owners. This project is not affiliated with or endorsed by them.
+commit changes
