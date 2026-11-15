@@ -19,7 +19,10 @@ if(EXISTS ${REPO}/sdk/cmake/XbeRecomp.cmake)
 elseif(EXISTS ${REPO}/../XboxXBE-Recomp/cmake/XbeRecomp.cmake)
     get_filename_component(SDK ${REPO}/../XboxXBE-Recomp ABSOLUTE)
 else()
-    FetchContent_Declare(xbe_sdk GIT_REPOSITORY https://github.com/TGP482/XboxXBE-Recomp.git GIT_TAG main)
+    # pinned: the SDK's main moved to game code built into a DLL at first start (Windows), which this port's
+    # recompiler step and libmain.so do not take; this is the commit v1.5.0 was built with
+    FetchContent_Declare(xbe_sdk GIT_REPOSITORY https://github.com/TGP482/XboxXBE-Recomp.git
+                         GIT_TAG 99078b119b5d5e0d1d6afb1390e29437c0c984c0)
     FetchContent_MakeAvailable(xbe_sdk)
     set(SDK ${xbe_sdk_SOURCE_DIR})
 endif()
@@ -96,6 +99,8 @@ target_include_directories(main PRIVATE ${NATIVE}/compat ${SDK}/harness/compat $
 target_include_directories(main SYSTEM PRIVATE ${imgui_SOURCE_DIR})
 # x86 chars are signed, as the game's code and the runtime were written for
 target_compile_options(main PRIVATE -fno-strict-aliasing -fsigned-char)
+# 64-bit file offsets also on 32-bit ARM (off_t is 32 bits there otherwise)
+target_compile_definitions(main PRIVATE _FILE_OFFSET_BITS=64)
 set(HOST_SOURCES ${RUNTIME_SOURCES} ${GAME_HOST_SOURCES} ${ANDROID_SOURCES})
 set_source_files_properties(${HOST_SOURCES} PROPERTIES COMPILE_OPTIONS "-include;${NATIVE}/compat/crt.h")
 set_source_files_properties(${GEN_SOURCES} PROPERTIES
@@ -106,5 +111,13 @@ set_source_files_properties(${NATIVE}/game_files.cpp PROPERTIES
     OBJECT_DEPENDS ${GAME}/common/europe.patch)
 target_link_libraries(main PRIVATE SDL3::SDL3 tomlplusplus::tomlplusplus glslang glslang-default-resource-limits
                       vulkan android log)
-# 16 KB pages, as Android 15 devices may have
-target_link_options(main PRIVATE -Wl,-z,max-page-size=16384)
+# 32-bit ARM: 64-bit atomics may need libatomic
+if(CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+    target_link_libraries(main PRIVATE atomic)
+endif()
+# 16 KB pages, as Android 15 devices may have (64-bit only)
+if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+    target_link_options(main PRIVATE -Wl,-z,max-page-size=16384)
+endif()
+
+    
