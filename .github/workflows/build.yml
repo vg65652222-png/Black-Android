@@ -3,10 +3,22 @@
 #
 # Secrets: XBE_KEY (the passphrase of ci/default.xbe.enc), KEYSTORE_BASE64 (the release .jks in base64),
 # KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD. Without the keystore the APK has a debug signature.
+#
+# ABIs: tags and pushes build arm64-v8a only. "Run workflow" (workflow_dispatch) lets you pick armeabi-v7a
+# (32-bit) or both, which Gradle receives as -Pabis=...
 name: Build
 
 on:
   workflow_dispatch:
+    inputs:
+      abis:
+        description: "ABIs to build"
+        type: choice
+        default: armeabi-v7a
+        options:
+          - armeabi-v7a
+          - arm64-v8a
+          - arm64-v8a,armeabi-v7a
   push:
     tags: ["v*"]
     branches: [main]
@@ -111,16 +123,25 @@ jobs:
       - name: Version
         id: version
         shell: bash
+        env:
+          ABIS: ${{ inputs.abis || 'arm64-v8a' }}
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             name="${GITHUB_REF_NAME#v}"
           else
             name="1.3.2-launcher-teste.$GITHUB_RUN_NUMBER"
           fi
+          # the file name says which ABIs are inside; arm64-v8a alone keeps the old name
+          case "$ABIS" in
+            arm64-v8a) suffix="" ;;
+            armeabi-v7a) suffix="-armeabi-v7a" ;;
+            *) suffix="-universal" ;;
+          esac
           echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "apk=Black-$name$suffix" >> "$GITHUB_OUTPUT"
           preview=""
           if [[ "$GITHUB_REF" != refs/tags/v* ]]; then preview=" -PlauncherPreview"; fi
-          echo "GRADLE_ARGS=$preview -PversionCode=$((100000 + GITHUB_RUN_NUMBER)) -PversionName=$name" >> "$GITHUB_ENV"
+          echo "GRADLE_ARGS=$preview -Pabis=$ABIS -PversionCode=$((100000 + GITHUB_RUN_NUMBER)) -PversionName=$name" >> "$GITHUB_ENV"
 
       - name: Preserve preview signing key
         if: "!startsWith(github.ref, 'refs/tags/v')"
@@ -135,19 +156,19 @@ jobs:
 
       - name: Name the APK
         shell: bash
-        run: mv app/build/outputs/apk/release/app-release.apk "Black-${{ steps.version.outputs.name }}.apk"
+        run: mv app/build/outputs/apk/release/app-release.apk "${{ steps.version.outputs.apk }}.apk"
 
       - uses: actions/upload-artifact@v5
         with:
-          name: Black-${{ steps.version.outputs.name }}
-          path: Black-${{ steps.version.outputs.name }}.apk
+          name: ${{ steps.version.outputs.apk }}
+          path: ${{ steps.version.outputs.apk }}.apk
           if-no-files-found: error
 
       - name: Release notes
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
-          apk="Black-${{ steps.version.outputs.name }}.apk"
+          apk="${{ steps.version.outputs.apk }}.apk"
           size=$(awk -v b="$(stat -c %s "$apk")" 'BEGIN { printf "%.1f MB", b / 1048576 }')
           sha=$(sha256sum "$apk" | cut -d' ' -f1)
           sed -e "s|{{VERSION}}|$GITHUB_REF_NAME|g" -e "s|{{TAG}}|$GITHUB_REF_NAME|g" -e "s|{{APK}}|$apk|g" \
@@ -167,6 +188,8 @@ jobs:
         with:
           name: Black for Android ${{ github.ref_name }}
           body_path: ${{ runner.temp }}/release-notes.md
-          files: Black-${{ steps.version.outputs.name }}.apk
+          files: ${{ steps.version.outputs.apk }}.apk
           generate_release_notes: true
-          make_latest: true
+          make_latest: true    
+
+          
