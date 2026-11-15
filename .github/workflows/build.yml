@@ -56,7 +56,6 @@ jobs:
         run: bash tests/run-touch-tests.sh
 
   build:
-    needs: controls-tests
     runs-on: windows-2025
     timeout-minutes: 300
     env:
@@ -193,4 +192,3 @@ jobs:
           files: ${{ steps.version.outputs.apk }}.apk
           generate_release_notes: true
           make_latest: true
-    
